@@ -1,0 +1,2 @@
+ARG version
+FROM nuclio/dashboard:${version}

@@ -1,0 +1,6 @@
+ARG version
+FROM node:${version}
+WORKDIR /usr/app
+COPY ./code /usr/app
+RUN npm install amqplib dotenv dotenv-expand
+CMD [ "node","server.js" ]

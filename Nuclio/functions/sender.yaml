@@ -1,0 +1,32 @@
+metadata:
+  name: sender
+  labels:
+    nuclio.io/project-name: c4f033ae-fbb7-4649-abf9-f8b75f7c436b
+spec:
+  handler: "main:handler"
+  runtime: nodejs
+  env:
+    - name: MQTT_URL
+      value: "mqtt://guest:guest@10.10.1.1:1883"
+    - name: MQTT_QUEUE
+      value: iot/sensors/cam
+  resources: {}
+  image: "nuclio/processor-sender:latest"
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPU: 75
+  build:
+    image: ""
+    noCache: true
+    offline: true
+    dependencies: []
+    runtimeAttributes:
+      repositories: []
+    functionSourceCode: dmFyIG1xdHQgPSByZXF1aXJlKCJtcXR0IiksDQogIHVybCA9IHJlcXVpcmUoInVybCIpOw0KDQp2YXIgbXF0dF91cmwgPSB1cmwucGFyc2UocHJvY2Vzcy5lbnYuTVFUVF9VUkwpOw0KdmFyIGF1dGggPSAobXF0dF91cmwuYXV0aCB8fCAiOiIpLnNwbGl0KCI6Iik7DQp2YXIgdXJsID0gIm1xdHQ6Ly8iICsgbXF0dF91cmwuaG9zdDsNCg0KdmFyIG9wdGlvbnMgPSB7DQogIHBvcnQ6IG1xdHRfdXJsLnBvcnQsDQogIGNsaWVudElkOiAic2VuZGVyXyIgKyBNYXRoLnJhbmRvbSgpLnRvU3RyaW5nKDE2KS5zdWJzdHIoMiwgOCksDQogIHVzZXJuYW1lOiBhdXRoWzBdLA0KICBwYXNzd29yZDogYXV0aFsxXSwNCn07DQoNCmV4cG9ydHMuaGFuZGxlciA9IGZ1bmN0aW9uIChjb250ZXh0LCBldmVudCkgew0KICB2YXIgY2xpZW50ID0gbXF0dC5jb25uZWN0KHVybCwgb3B0aW9ucyk7DQoNCiAgY2xpZW50Lm9uKCJjb25uZWN0IiwgZnVuY3Rpb24gKCkgew0KICAgIGxldCBjb29yZGluYXRlcyA9IHsNCiAgICAgIHg6IE1hdGgucmFuZG9tKCkgKiAxMDAsDQogICAgICB5OiBNYXRoLnJhbmRvbSgpICogMTAwLA0KICAgIH07DQogICAgY2xpZW50LnB1Ymxpc2gocHJvY2Vzcy5lbnYuTVFUVF9RVUVVRSwgSlNPTi5zdHJpbmdpZnkoY29vcmRpbmF0ZXMpLCBmdW5jdGlvbiAoKSB7DQogICAgICBjbGllbnQuZW5kKCk7DQogICAgICBjb250ZXh0LmNhbGxiYWNrKCJNUVRUIE1lc3NhZ2UgU2VudCIpOw0KICAgIH0pOw0KICB9KTsNCn07DQoNCg==
+    commands:
+      - "npm install mqtt"
+      - "npm install url"
+    codeEntryType: sourceCode
+  platform: {}
+  readinessTimeoutSeconds: 10
+  timeoutSeconds: 10

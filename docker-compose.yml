@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  nuclio:
+    build:
+      context: ./Nuclio
+      dockerfile: Dockerfile.dev
+      args:
+        - version=${NUCLIO_VERSION}
+    ports:
+      - "${NUCLIO_DASHBOARD_PORT}:8070"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/tmp:/tmp"
+    restart: on-failure
+  rabbitmq:
+    build:
+      context: ./RabbitMQ
+      dockerfile: Dockerfile.dev
+      args:
+        - version=${RABBITMQ_VERSION}
+    ports:
+      - "${RABBITMQ_DASHBOARD_PORT}:15672"
+      - "${RABBITMQ_MQTT_PORT}:1883"
+      - "${RABBITMQ_AMQP_PORT}:5672"
+    restart: on-failure
+  server:
+    build:
+      context: ./Server
+      dockerfile: Dockerfile.dev
+      args:
+        - version=${NODE_VERSION}
+    environment:
+      - AMQP_URL=${AMQP_URL}
+      - AMQP_QUEUE=${AMQP_QUEUE}
+    depends_on:
+      - "rabbitmq"
+      - "nuclio"
+    restart: always
