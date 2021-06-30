@@ -31,13 +31,13 @@ async function isAnEmergency(json) {
   movementTimeBreakpoint.setSeconds(
     movementTimeBreakpoint.getSeconds() -
       process.env.MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS
-  ); //MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS seconds ahead
+  ); //MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS seconds backward
 
   var emailTimeBreakpoint = new Date();
   emailTimeBreakpoint.setSeconds(
     emailTimeBreakpoint.getSeconds() -
       process.env.EMAIL_SENDING_TIME_WINDOW_IN_SECONDS
-  ); //EMAIL_SENDING_TIME_WINDOW_IN_SECONDS seconds ahead
+  ); //EMAIL_SENDING_TIME_WINDOW_IN_SECONDS seconds backward
 
   try {
     await client.connect();
