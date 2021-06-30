@@ -17,8 +17,8 @@ exports.handler = function (context, event) {
 
   client.on("connect", function () {
     let coordinates = {
-      x: Math.random() * 100,
-      y: Math.random() * 100,
+      motionBlock: Math.floor(Math.random() * 10),
+      cameraID: Math.floor(Math.random() * 5),
     };
     client.publish(
       process.env.MQTT_QUEUE,
