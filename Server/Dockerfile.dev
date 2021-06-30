@@ -1,6 +1,5 @@
 ARG version
 FROM node:${version}
 WORKDIR /usr/app
-COPY ./code /usr/app
-RUN npm install amqplib dotenv dotenv-expand
+RUN npm install amqplib dotenv dotenv-expand mongodb nodemailer
 CMD [ "node","server.js" ]

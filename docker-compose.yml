@@ -36,8 +36,8 @@ services:
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${DATABASE_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${DATABASE_PASSWORD}
-    volumes:
-      - "./Database/db:/data/db"
+    #volumes:
+    #  - "./Database/db:/data/db"
   database_dashboard:
     build:
       context: ./Database-Dashboard
@@ -60,10 +60,24 @@ services:
       dockerfile: Dockerfile.dev
       args:
         - version=${NODE_VERSION}
+    volumes:
+      - "./Server/code/server.js:/usr/app/server.js"
     environment:
       - AMQP_URL=${AMQP_URL}
       - AMQP_QUEUE=${AMQP_QUEUE}
+      - DATABASE_URL=${DATABASE_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - RECIPIENT_EMAIL_ADDRESS=${RECIPIENT_EMAIL_ADDRESS}
+      - SENDER_EMAIL_ADDRESS=${SENDER_EMAIL_ADDRESS}
+      - MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS=${MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS}
+      - MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS=${MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS}
+      - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS=${EMAIL_SENDING_TIME_WINDOW_IN_SECONDS}
     depends_on:
       - "rabbitmq"
       - "nuclio"
+      - "database"
     restart: always
