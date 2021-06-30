@@ -36,6 +36,12 @@ Edit .env file variables by following these instructions:
 - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS: the number of seconds to wait before sending a new email to the SENDER_EMAIL_ADDRESS address, in case of detection
 ```
 
+Edit these environment variables by following these instructions:
+
+- In the `Nuclio/functions/sender.yaml` edit the `MQTT_URL` by replacing the IP with your COMPUTER_IP variable value; e.g. `mqtt://guest:guest@YOUR_COMPUTER_IP_VARIABLE_VALUE:1883`
+- In the `Nuclio/functions/consumer.yaml` edit the `AMQP_URL` by replacing the IP with your COMPUTER_IP variable value; e.g. `amqp://guest:guest@YOUR_COMPUTER_IP_VARIABLE_VALUE:5672`
+- In the `Nuclio/functions/consumer.yaml` edit the `mqtt` trigger `url` by replacing the IP with your COMPUTER_IP variable value; e.g. `guest:guest@YOUR_COMPUTER_IP_VARIABLE_VALUE:1883`
+
 ### Third Step
 
 Deploy local environment with Docker (since next time, the "--build" flag is unnecessary):
