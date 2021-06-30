@@ -24,6 +24,36 @@ services:
       - "${RABBITMQ_MQTT_PORT}:1883"
       - "${RABBITMQ_AMQP_PORT}:5672"
     restart: on-failure
+  database:
+    build:
+      context: ./Database
+      dockerfile: Dockerfile.dev
+      args:
+        - version=${DATABASE_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${DATABASE_PORT}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${DATABASE_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${DATABASE_PASSWORD}
+    volumes:
+      - "./Database/db:/data/db"
+  database_dashboard:
+    build:
+      context: ./Database-Dashboard
+      dockerfile: Dockerfile.dev
+      args:
+        - version=latest
+    restart: always
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${DATABASE_USERNAME}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${DATABASE_PASSWORD}
+      - ME_CONFIG_MONGODB_SERVER=${DATABASE_HOST}
+      - ME_CONFIG_MONGODB_PORT=${DATABASE_PORT}
+    ports:
+      - "${DATABASE_DASHBOARD_PORT}:8081"
+    depends_on:
+      - "database"
   server:
     build:
       context: ./Server
