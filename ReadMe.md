@@ -239,7 +239,7 @@ $ docker-compose up --build
 
 ### Deploy
 
-Visit the Nuclio Dashboard by typing `http://localhost:8000` and create a project named `CamAlert`. Then:
+Visit the Nuclio Dashboard by typing `http://COMPUTER_IP:NUCLIO_DASHBOARD_PORT` where `COMPUTER_IP = localhost` and `NUCLIO_DASHBOARD_PORT = 8000` are two env variables, and create a project named `CamAlert`. Then:
 
 - Create and deploy the Consumer function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/consumer.yaml` path.
 - Create and deploy the Sender function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/sender.yaml` path.
