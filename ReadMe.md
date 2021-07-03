@@ -7,7 +7,7 @@ The application is mainly composed by:
 - Mongo Express service that can be used for managing the MongoDB databases.
 - One serverless Sender Function (used for simulating the sensors) which sends a new alert message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/sensors/cam`.
 - One serverless Consume Function which is triggered by a new MQTT message on the Topic `iot/sensors/cam`. It sends a new message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/logs`.
-- A NodeJS server that logs the invocation of the consume function; this server waits for new messages on the MQTT queue `iot/logs` and it's executed in a dedicated nodeJS service. The server processes and stores the logs into the MongoDB database and, if an alarm is detected, sends an email to the user email address (the env `SENDER_EMAIL_ADDRESS` variable value). The alarm detection of a camera depends on the `y` number of detections received from a camera in the last `x` seconds (`y` is env `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` variable value and `c` is the `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` variable value). The sending of an email depends on the emergency situation detected but, if an email is sent (it will be known because the email logs are stored in the database), the server waits `z` seconds before sending a new email in case of a persistent emergency (`z` is the env `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` variable value).
+- A NodeJS server that logs the invocation of the consume function; this server waits for new messages on the MQTT queue `iot/logs` and it's executed in a dedicated nodeJS service. The server processes and stores the logs into the MongoDB database and, if an emergency is detected, sends an email to the user email address (the env `SENDER_EMAIL_ADDRESS` variable value). The alarm emergency of a camera depends on the `y` number of detections received from a camera in the last `x` seconds (`y` is env `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` variable value and `x` is the `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` variable value). The sending of an email depends on the emergency situation detected but, if an email is sent (it will be known because the email logs are stored in the database), the server waits `z` seconds before sending a new email in case of a persistent emergency (`z` is the env `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` variable value).
 
 #### Tutorial Structure
 
@@ -15,6 +15,9 @@ The application is mainly composed by:
   * **[Sender Function](#sender-function)**
   * **[Consume Function](#consume-function)**
   * **[Server Application](#server-application)**
+    * **[insertAlert function](#insertalert-function)**
+    * **[sendEmail function](#sendemail-function)** 
+    * **[isAnEmergency function](#isanemergency-function)**
 * **[Installation](#installation)**
   * **[Prerequisites](#prerequisites)**
   * **[Repository](#repository)**
@@ -188,6 +191,214 @@ spec:
   timeoutSeconds: 10
 ```
 ### Server Application
+The server application is written in JavaScript and uses the `amqplib, mongodb and nodemailer` JavaScript libraries in order to receive alert messages on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value, store the alerts, and send an email in case of a detected emergency.
+
+The server processes and stores the logs into the MongoDB database (by using the `insertAlert` utility function) and, if an emergency is detected, sends an email to the `SENDER_EMAIL_ADDRESS`. 
+
+The alarm detection of a camera depends on the `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` number of detections received from a camera in the last `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` seconds. 
+
+The sending of an email (by using the `sendEmail` utility function) depends on the emergency situation detected (by using the `isAnEmergency` utility function) but, if an email is sent, the server waits `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` seconds before sending a new email in case of a persistent emergency.
+
+The JavaScript code - by hiding the utility functions - is the following:
+```javascript
+require("dotenv-expand")(require("dotenv").config());
+var amqp = require("amqplib");
+var nodemailer = require("nodemailer");
+const { MongoClient } = require("mongodb");
+let mongoUrl = process.env.DATABASE_URL + "?authMechanism=DEFAULT";
+let mongoOptions = { useUnifiedTopology: true };
+
+.........
+Utility functions
+.........
+
+var ampq_url = process.env.AMQP_URL;
+var ampq_queue = process.env.AMQP_QUEUE;
+
+amqp
+  .connect(ampq_url)
+  .then(function (conn) {
+    process.once("SIGINT", function () {
+      conn.close();
+    });
+    return conn.createChannel().then(function (ch) {
+      var ok = ch.assertQueue(process.env.AMQP_QUEUE, { durable: false });
+
+      ok = ok.then(function (_qok) {
+        return ch.consume(
+          ampq_queue,
+          async function (msg) {
+            var json = JSON.parse(msg.content);
+            json.date = new Date().toISOString();
+            await insertAlert(json).then(async function (result) {
+              const emergency = await isAnEmergency(json);
+              if (emergency) {
+                await sendEmail(json);
+              }
+            });
+          },
+          { noAck: true }
+        );
+      });
+
+      return ok.then(function (_consumeOk) {
+        console.log("Waiting for messages. To exit press CTRL+C");
+      });
+    });
+  })
+  .catch(console.warn);
+```
+#### insertAlert function
+This function uses the `mongodb` JavaScript library for storing an alert identified by the `json` variable and returns the mongodb `document` returned from the `insertOne` method; the alert is stored into the `CamAlert` database and `alerts` collection.
+
+The JavaScript code is the following:
+```javascript
+async function insertAlert(json) {
+  const client = new MongoClient(mongoUrl, mongoOptions);
+  try {
+    await client.connect();
+    const col = client.db("CamAlert").collection("alerts");
+    const result = await col.insertOne(json);
+    console.log(
+      "A movement for cam " +
+        json.cameraID +
+        " and motion block " +
+        json.motionBlock +
+        " has been detected"
+    );
+    return result;
+  } finally {
+    await client.close();
+  }
+}
+```
+#### sendEmail function
+This function uses the `mongodb` JavaScript library for storing the sent emails (into the CamAlert database and alerts collection), and uses the `nodemailer` JavaScript library for sending the emails to the `SENDER_EMAIL_ADDRESS`.
+
+The JavaScript code is the following:
+```javascript
+async function sendEmail(json) {
+  const client = new MongoClient(mongoUrl, mongoOptions);
+  try {
+    await client.connect();
+    const col = client.db("CamAlert").collection("emails");
+    json.to = process.env.RECIPIENT_EMAIL_ADDRESS;
+    await col.insertOne(json).then(async function () {
+      let transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: process.env.SMTP_SECURE,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+      await transporter.sendMail({
+        from: process.env.SENDER_EMAIL_ADDRESS,
+        to: process.env.RECIPIENT_EMAIL_ADDRESS,
+        subject: "Movement Detected",
+        text:
+          "A movement on cam " +
+          json.cameraID +
+          " has been detected in motion block " +
+          json.motionBlock,
+      });
+    });
+  } finally {
+    await client.close();
+  }
+}
+```
+
+#### isAnEmergency function
+This function uses the `mongodb` JavaScript library for retrieving the alerts (stored into the `CamAlert` database and `alerts` collection) identified by the `json` variable, and returns `true` if the `numberOfAlerts` is greater than `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` and the `numberOfEmailsSent` in the last `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` seconds is zero, `false` otherwise.
+
+The JavaScript code is the following:
+```javascript
+async function isAnEmergency(json) {
+  const client = new MongoClient(mongoUrl, mongoOptions);
+
+  var movementTimeBreakpoint = new Date();
+  movementTimeBreakpoint.setSeconds(
+    movementTimeBreakpoint.getSeconds() -
+      process.env.MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS
+  ); //MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS seconds backward
+
+  var emailTimeBreakpoint = new Date();
+  emailTimeBreakpoint.setSeconds(
+    emailTimeBreakpoint.getSeconds() -
+      process.env.EMAIL_SENDING_TIME_WINDOW_IN_SECONDS
+  ); //EMAIL_SENDING_TIME_WINDOW_IN_SECONDS seconds backward
+
+  try {
+    await client.connect();
+
+    const numberOfAlerts = await client
+      .db("CamAlert")
+      .collection("alerts")
+      .countDocuments({
+        cameraId: json.cameraId,
+        motionBlock: json.motionBlock,
+        date: { $gte: movementTimeBreakpoint.toISOString() },
+      });
+
+    if (numberOfAlerts < process.env.MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS) {
+      console.log(
+        "The number of movement detection stored for cam " +
+          json.cameraID +
+          " and motion block " +
+          json.motionBlock +
+          " in the last " +
+          process.env.MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS +
+          " seconds is: " +
+          numberOfAlerts +
+          ". It is still not considered as an emergency."
+      );
+      return false;
+    }
+
+    const numberOfEmailsSent = await client
+      .db("CamAlert")
+      .collection("emails")
+      .countDocuments({
+        cameraId: json.cameraId,
+        motionBlock: json.motionBlock,
+        date: { $gte: emailTimeBreakpoint.toISOString() },
+      });
+    if (numberOfEmailsSent > 0) {
+      console.log(
+        "The number of movement detection stored for cam " +
+          json.cameraID +
+          " and motion block " +
+          json.motionBlock +
+          " in the last " +
+          process.env.MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS +
+          " seconds is: " +
+          numberOfAlerts +
+          ". It is considered as an emergency but an email has already been sent in the last " +
+          process.env.EMAIL_SENDING_TIME_WINDOW_IN_SECONDS +
+          " seconds."
+      );
+      return false;
+    }
+
+    console.log(
+      "The number of movement detection stored for cam " +
+        json.cameraID +
+        " and motion block " +
+        json.motionBlock +
+        " in the last " +
+        process.env.MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS +
+        " seconds is: " +
+        numberOfAlerts +
+        ". It is considered as an emergency and an email is sent!!!"
+    );
+    return true;
+  } finally {
+    await client.close();
+  }
+}
+```
 
 ## Installation
 
