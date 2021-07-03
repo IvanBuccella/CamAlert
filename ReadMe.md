@@ -23,6 +23,7 @@ The application is mainly composed by:
   * **[Repository](#repository)**
   * **[Environment Variables](#environment-variables)**
   * **[Build](#build)**
+  * **[Start Docker Services](#start-docker-services)**
   * **[Deploy](#deploy)**
 
 ## The code
@@ -406,7 +407,7 @@ async function isAnEmergency(json) {
   - Docker and Docker Compose (Application containers engine). Install it from here https://www.docker.com
   - Nuclio (Serverless computing provider)
   - RabbitMQ (AMQP and MQTT message broker)
-  - Node.js 
+  - Node.js (if you prefer to execute the Server application without using Docker). Install it from here https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
 
 ### Repository
 
@@ -442,10 +443,47 @@ Edit these environment variables by following these instructions:
 
 ### Build
 
-Deploy local environment with Docker (since next time, the "--build" flag is unnecessary):
+If you prefer to execute the `server application` without using Docker, you need to remove the server service from the docker-compose.yml file:
+```yml
+  server:
+    build:
+      context: ./Server
+      dockerfile: Dockerfile.dev
+      args:
+        - version=${NODE_VERSION}
+    volumes:
+      - "./Server/code/server.js:/usr/app/server.js"
+    environment:
+      - AMQP_URL=${AMQP_URL}
+      - AMQP_QUEUE=${AMQP_QUEUE}
+      - DATABASE_URL=${DATABASE_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - RECIPIENT_EMAIL_ADDRESS=${RECIPIENT_EMAIL_ADDRESS}
+      - SENDER_EMAIL_ADDRESS=${SENDER_EMAIL_ADDRESS}
+      - MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS=${MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS}
+      - MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS=${MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS}
+      - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS=${EMAIL_SENDING_TIME_WINDOW_IN_SECONDS}
+    depends_on:
+      - "rabbitmq"
+      - "nuclio"
+      - "database"
+    restart: always
+```
+
+Build the local environment with Docker:
 
 ```sh
-$ docker-compose up --build
+$ docker-compose build
+```
+
+### Start Docker Services
+
+```sh
+$ docker-compose up
 ```
 
 ### Deploy
@@ -454,5 +492,23 @@ Visit the Nuclio Dashboard by typing `http://COMPUTER_IP:NUCLIO_DASHBOARD_PORT` 
 
 - Create and deploy the Consumer function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/consumer.yaml` path.
 - Create and deploy the Sender function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/sender.yaml` path.
+
+If you prefer to execute the `server application` without using Docker, you need to:
+- copy `.env` file into the server code folder:
+```sh
+cp .env Server/code/.env
+```
+- move into the server code folder:
+```sh
+cd Server/code
+```
+- install the dependencies:
+```sh
+npm install amqplib dotenv dotenv-expand mongodb nodemailer
+```
+- execute the server:
+```sh
+node server.js
+```
 
 ### Enjoy :-)
