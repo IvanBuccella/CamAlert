@@ -1,20 +1,106 @@
 # CamAlert
 
-CamAlert is an application built using a Serverless Computing approach. The application alerts the user via email of an emergency that is detected from the movement detection alerts that the IoT sensors of the house-installed cameras send into an MQTT queue. 
+CamAlert is an application built using a Serverless Computing approach. The application alerts the user via email of an emergency that is detected from the movement detection alerts which the IoT sensors of the house-installed cameras send into an MQTT queue. 
 
 The application is mainly composed by:
 - MongoDB NoSQL DBaaS service.
 - Mongo Express service that can be used for managing the MongoDB databases.
-- One serverless Sender Function which sends a new alert message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/sensors/cam`.
+- One serverless Sender Function (used for simulating the sensors) which sends a new alert message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/sensors/cam`.
 - One serverless Consume Function which is triggered by a new MQTT message on the Topic `iot/sensors/cam`. It sends a new message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/logs`.
 - A NodeJS server that logs the invocation of the consume function; this server waits for new messages on the MQTT queue `iot/logs` and it's executed in a dedicated nodeJS service. The server processes and stores the logs into the MongoDB database and, if an alarm is detected, sends an email to the user email address (the env `SENDER_EMAIL_ADDRESS` variable value). The alarm detection of a camera depends on the `y` number of detections received from a camera in the last `x` seconds (`y` is env `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` variable value and `c` is the `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` variable value). The sending of an email depends on the emergency situation detected but, if an email is sent (it will be known because the email logs are stored in the database), the server waits `z` seconds before sending a new email in case of a persistent emergency (`z` is the env `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` variable value).
 
-## Talk about the code
-### The serverless functions
-#### Sender Function
+#### Tutorial Structure
 
+* **[The Code](#the-code)**
+  * **[Sender Function](#sender-function)**
+  * **[Consume Function](#consume-function)**
+  * **[Server Application](#server-application)**
+* **[Installation](#installation)**
+  * **[Prerequisites](#prerequisites)**
+  * **[Repository](#repository)**
+  * **[Environment Variables](#environment-variables)**
+  * **[Build](#build)**
+  * **[Deploy](#deploy)**
+
+## The code
+### The serverless functions
+Every function in Nuclio is identified by a serving port, you can see the serving port in the Nuclio dashboard by visiting the URL `http://COMPUTER_IP:NUCLIO_DASHBOARD_PORT` where `COMPUTER_IP = localhost` and `NUCLIO_DASHBOARD_PORT = 8000` are two env variables.
+
+#### Sender Function
+The Sender Function is written in JavaScript and uses the `mqtt` JavaScript library in order to send a new alert message on the queue specified from the `MQTT_QUEUE = iot/sensors/cam` env variable value; the function sends a new message on the topic by following this structure `{motionBlock: x, cameraID: y,}` where `x` and `y` are two random values and respectively identify the `Camera` and the `Block` of the camera visual where the sensors detect the movements.
+The JavaScript code is the following:
+```javascript
+var mqtt = require("mqtt"),
+  url = require("url");
+
+var mqtt_url = url.parse(process.env.MQTT_URL);
+var auth = (mqtt_url.auth || ":").split(":");
+var url = "mqtt://" + mqtt_url.host;
+
+var options = {
+  port: mqtt_url.port,
+  clientId: "sender_" + Math.random().toString(16).substr(2, 8),
+  username: auth[0],
+  password: auth[1],
+};
+
+exports.handler = function (context, event) {
+  var client = mqtt.connect(url, options);
+
+  client.on("connect", function () {
+    let coordinates = {
+      motionBlock: Math.floor(Math.random() * 10),
+      cameraID: Math.floor(Math.random() * 5),
+    };
+    client.publish(
+      process.env.MQTT_QUEUE,
+      JSON.stringify(coordinates),
+      function () {
+        client.end();
+        context.callback("MQTT Message Sent");
+      }
+    );
+  });
+};
+```
+The function is deployed using the Docker compose specifics for Nuclio: using a `.yaml` file that defines all functions configurations and the source code.
+- The source code (the JavaScript code) is encoded in base64 and copied in the attribute `functionSourceCode` of the `.yaml` file. 
+- The Javascript dependencies (libraries) install commands are defined in the `commands` attribute of the `.yaml` file. 
+```yaml
+metadata:
+  name: sender
+  labels:
+    nuclio.io/project-name: c4f033ae-fbb7-4649-abf9-f8b75f7c436b
+spec:
+  handler: "main:handler"
+  runtime: nodejs
+  env:
+    - name: MQTT_URL
+      value: "mqtt://guest:guest@10.10.1.1:1883"
+    - name: MQTT_QUEUE
+      value: iot/sensors/cam
+  resources: {}
+  image: "nuclio/processor-sender:latest"
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPU: 75
+  build:
+    image: ""
+    noCache: true
+    offline: false
+    dependencies: []
+    runtimeAttributes:
+      repositories: []
+    functionSourceCode: dmFyIG1xdHQgPSByZXF1aXJlKCJtcXR0IiksDQogIHVybCA9IHJlcXVpcmUoInVybCIpOw0KDQp2YXIgbXF0dF91cmwgPSB1cmwucGFyc2UocHJvY2Vzcy5lbnYuTVFUVF9VUkwpOw0KdmFyIGF1dGggPSAobXF0dF91cmwuYXV0aCB8fCAiOiIpLnNwbGl0KCI6Iik7DQp2YXIgdXJsID0gIm1xdHQ6Ly8iICsgbXF0dF91cmwuaG9zdDsNCg0KdmFyIG9wdGlvbnMgPSB7DQogIHBvcnQ6IG1xdHRfdXJsLnBvcnQsDQogIGNsaWVudElkOiAic2VuZGVyXyIgKyBNYXRoLnJhbmRvbSgpLnRvU3RyaW5nKDE2KS5zdWJzdHIoMiwgOCksDQogIHVzZXJuYW1lOiBhdXRoWzBdLA0KICBwYXNzd29yZDogYXV0aFsxXSwNCn07DQoNCmV4cG9ydHMuaGFuZGxlciA9IGZ1bmN0aW9uIChjb250ZXh0LCBldmVudCkgew0KICB2YXIgY2xpZW50ID0gbXF0dC5jb25uZWN0KHVybCwgb3B0aW9ucyk7DQoNCiAgY2xpZW50Lm9uKCJjb25uZWN0IiwgZnVuY3Rpb24gKCkgew0KICAgIGxldCBjb29yZGluYXRlcyA9IHsNCiAgICAgIG1vdGlvbkJsb2NrOiBNYXRoLmZsb29yKE1hdGgucmFuZG9tKCkgKiAxMCksDQogICAgICBjYW1lcmFJRDogTWF0aC5mbG9vcihNYXRoLnJhbmRvbSgpICogNSksDQogICAgfTsNCiAgICBjbGllbnQucHVibGlzaChwcm9jZXNzLmVudi5NUVRUX1FVRVVFLCBKU09OLnN0cmluZ2lmeShjb29yZGluYXRlcyksIGZ1bmN0aW9uICgpIHsNCiAgICAgIGNsaWVudC5lbmQoKTsNCiAgICAgIGNvbnRleHQuY2FsbGJhY2soIk1RVFQgTWVzc2FnZSBTZW50Iik7DQogICAgfSk7DQogIH0pOw0KfTsNCg0K
+    commands:
+      - 'npm install mqtt'
+      - 'npm install url'
+    codeEntryType: sourceCode
+  platform: {}
+  readinessTimeoutSeconds: 10
+```
 #### Consume Function
-The Consume Function is written in JavaScript and uses the `amqplib` JavaScript library in order to send a new alert message on the queue specified from the `AMQP_QUEUE = iot/logs` env varibale value; the invocation of the function is triggered by a new MQTT message on the topic specified from the `MQTT_QUEUE = iot/sensors/cam` env varibale value. The JavaScript code is the following:
+The Consume Function is written in JavaScript and uses the `amqplib` JavaScript library in order to send a new alert message on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value; the invocation of the function is triggered by a new MQTT message on the topic specified from the `MQTT_QUEUE = iot/sensors/cam` env variable value. The JavaScript code is the following:
 ```javascript
 var amqp = require("amqplib");
 
@@ -101,7 +187,7 @@ spec:
   readinessTimeoutSeconds: 10
   timeoutSeconds: 10
 ```
-### The server
+### Server Application
 
 ## Installation
 
@@ -111,7 +197,7 @@ spec:
   - RabbitMQ (AMQP and MQTT message broker)
   - Node.js 
 
-### First Step
+### Repository
 
 Clone the repository:
 
@@ -119,7 +205,7 @@ Clone the repository:
 $ git clone https://github.com/IvanBuccella/CamAlert
 ```
 
-### Second Step
+### Environment Variables
 
 Edit .env file variables by following these instructions:
 
@@ -143,7 +229,7 @@ Edit these environment variables by following these instructions:
 - In the `Nuclio/functions/consumer.yaml` edit the `AMQP_URL` by replacing the IP with your COMPUTER_IP variable value; e.g. `amqp://guest:guest@YOUR_COMPUTER_IP_VARIABLE_VALUE:5672`
 - In the `Nuclio/functions/consumer.yaml` edit the `mqtt` trigger `url` by replacing the IP with your COMPUTER_IP variable value; e.g. `guest:guest@YOUR_COMPUTER_IP_VARIABLE_VALUE:1883`
 
-### Third Step
+### Build
 
 Deploy local environment with Docker (since next time, the "--build" flag is unnecessary):
 
@@ -151,11 +237,9 @@ Deploy local environment with Docker (since next time, the "--build" flag is unn
 $ docker-compose up --build
 ```
 
-### Fourth Step
+### Deploy
 
-Visit the Nuclio Dashboard by typing `http://localhost:8000` and create a project named `CamAlert`
-
-### Fifth Step
+Visit the Nuclio Dashboard by typing `http://localhost:8000` and create a project named `CamAlert`. Then:
 
 - Create and deploy the Consumer function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/consumer.yaml` path.
 - Create and deploy the Sender function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/sender.yaml` path.
