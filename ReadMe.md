@@ -192,9 +192,9 @@ spec:
   timeoutSeconds: 10
 ```
 ### Server Application
-The server application is written in JavaScript and uses the `amqplib, mongodb and nodemailer` JavaScript libraries in order to receive alert messages on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value, store the alerts, and send an email in case of a detected emergency.
+The server application is written in JavaScript and uses the `amqplib, mongodb, and nodemailer` JavaScript libraries in order to receive alert messages on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value, store the alerts, and send an email in case of a detected emergency.
 
-The server processes and stores the logs into the MongoDB database (by using the `insertAlert` utility function) and, if an emergency is detected, sends an email to the `SENDER_EMAIL_ADDRESS`. 
+The server processes and stores the logs into the MongoDB database (by using the `insertAlert` utility function) and, if an emergency is detected, send an email to the `SENDER_EMAIL_ADDRESS`. 
 
 The alarm detection of a camera depends on the `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` number of detections received from a camera in the last `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` seconds. 
 
@@ -430,7 +430,7 @@ Edit .env file variables by following these instructions:
 - SMTP_PASS: your SMTP server password
 - SENDER_EMAIL_ADDRESS: your SMTP server associated "sender" email address
 - RECIPIENT_EMAIL_ADDRESS: the email address where you want to receive the alerts
-- MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS: the number of detections to bufferize for MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS seconds before sending an email
+- MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS: the number of detections to buffer for MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS seconds before sending an email
 - MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS: the number of seconds in which the application look the movement detections backward
 - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS: the number of seconds to wait before sending a new email to the SENDER_EMAIL_ADDRESS address, in case of detection
 ```
