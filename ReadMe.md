@@ -9,6 +9,10 @@ The application is mainly composed by:
 - One serverless Consume Function is triggered by a new MQTT message on the Topic `iot/sensors/cam`. It sends a new message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/logs`.
 - A NodeJS server that logs the invocation of the consume function; this server waits for new messages on the MQTT queue `iot/logs` and it's executed in a dedicated nodeJS service. The server processes and stores the logs into the MongoDB database and, if an emergency is detected, sends an email to the user email address (the env `SENDER_EMAIL_ADDRESS` variable value). The alarm emergency of a camera depends on the `y` number of detections received from a camera in the last `x` seconds (`y` is env `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` variable value and `x` is the `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` variable value). The sending of an email depends on the emergency detected but, if an email is sent (it will be known because the email logs are stored in the database), the server waits `z` seconds before sending a new email in case of a persistent emergency (`z` is the env `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` variable value).
 
+
+![Alt text](assets/structure.jpg?raw=true "Project Structure")
+
+
 #### Tutorial Structure
 
 * **[The Code](#the-code)**
