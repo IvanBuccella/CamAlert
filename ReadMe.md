@@ -3,7 +3,7 @@
 CamAlert is an application built using a Serverless Computing approach. The application, through using Nuclio, RabbitMQ, MongoDB, and NodeJS, alerts the user via email of an emergency that is detected from the movement detection alerts which the IoT sensors of the house-installed cameras send into an MQTT queue.
 
 The application is mainly composed by:
-- MongoDB NoSQL DBaaS service.
+- MongoDB NoSQL service.
 - Mongo Express service that can be used for managing the MongoDB databases.
 - One serverless Sender Function (used for simulating the sensors) sends a new alert message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/sensors/cam`.
 - One serverless Consume Function is triggered by a new MQTT message on the Topic `iot/sensors/cam`. It sends a new message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/logs`.
