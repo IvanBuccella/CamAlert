@@ -16,17 +16,13 @@ exports.handler = function (context, event) {
   var client = mqtt.connect(url, options);
 
   client.on("connect", function () {
-    let coordinates = {
+    let data = {
       motionBlock: Math.floor(Math.random() * 10),
       cameraID: Math.floor(Math.random() * 5),
     };
-    client.publish(
-      process.env.MQTT_QUEUE,
-      JSON.stringify(coordinates),
-      function () {
-        client.end();
-        context.callback("MQTT Message Sent");
-      }
-    );
+    client.publish(process.env.MQTT_QUEUE, JSON.stringify(data), function () {
+      client.end();
+      context.callback("MQTT Message Sent");
+    });
   });
 };

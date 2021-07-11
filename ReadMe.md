@@ -3,40 +3,43 @@
 CamAlert is an application built using a Serverless Computing approach. The application, through using Nuclio, RabbitMQ, MongoDB, and NodeJS, alerts the user via email of an emergency that is detected from the movement detection alerts which the IoT sensors of the house-installed cameras send into an MQTT queue.
 
 The application is mainly composed by:
+
 - MongoDB NoSQL service.
 - Mongo Express service that can be used for managing the MongoDB databases.
 - One serverless Sender Function (used for simulating the sensors) sends a new alert message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/sensors/cam`.
 - One serverless Consume Function is triggered by a new MQTT message on the Topic `iot/sensors/cam`. It sends a new message `{motionBlock: x, cameraID: y,}` value on the MQTT Topic `iot/logs`.
 - A NodeJS server that logs the invocation of the consume function; this server waits for new messages on the MQTT queue `iot/logs` and it's executed in a dedicated nodeJS service. The server processes and stores the logs into the MongoDB database and, if an emergency is detected, sends an email to the user email address (the env `SENDER_EMAIL_ADDRESS` variable value). The alarm emergency of a camera depends on the `y` number of detections received from a camera in the last `x` seconds (`y` is env `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` variable value and `x` is the `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` variable value). The sending of an email depends on the emergency detected but, if an email is sent (it will be known because the email logs are stored in the database), the server waits `z` seconds before sending a new email in case of a persistent emergency (`z` is the env `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` variable value).
 
-
 ![Alt text](assets/structure.jpg?raw=true "Project Structure")
-
 
 #### Tutorial Structure
 
-* **[The Code](#the-code)**
-  * **[Sender Function](#sender-function)**
-  * **[Consume Function](#consume-function)**
-  * **[Server Application](#server-application)**
-    * **[insertAlert function](#insertalert-function)**
-    * **[sendEmail function](#sendemail-function)** 
-    * **[isAnEmergency function](#isanemergency-function)**
-* **[Installation](#installation)**
-  * **[Prerequisites](#prerequisites)**
-  * **[Repository](#repository)**
-  * **[Environment Variables](#environment-variables)**
-  * **[Build](#build)**
-  * **[Start Docker Services](#start-docker-services)**
-  * **[Deploy](#deploy)**
+- **[The Code](#the-code)**
+  - **[Sender Function](#sender-function)**
+  - **[Consume Function](#consume-function)**
+  - **[Server Application](#server-application)**
+    - **[insertAlert function](#insertalert-function)**
+    - **[sendEmail function](#sendemail-function)**
+    - **[isAnEmergency function](#isanemergency-function)**
+- **[Installation](#installation)**
+  - **[Prerequisites](#prerequisites)**
+  - **[Repository](#repository)**
+  - **[Environment Variables](#environment-variables)**
+  - **[Build](#build)**
+  - **[Start Docker Services](#start-docker-services)**
+  - **[Deploy](#deploy)**
 
 ## The code
+
 ### The serverless functions
+
 Every function in Nuclio is identified by a serving port, you can see the serving port in the Nuclio dashboard by visiting the URL `http://COMPUTER_IP:NUCLIO_DASHBOARD_PORT` where `COMPUTER_IP = localhost` and `NUCLIO_DASHBOARD_PORT = 8000` are two env variables.
 
 #### Sender Function
+
 The Sender Function is written in JavaScript and uses the `mqtt` JavaScript library in order to send a new alert message on the queue specified from the `MQTT_QUEUE = iot/sensors/cam` env variable value; the function sends a new message on the topic by following this structure `{motionBlock: x, cameraID: y,}` where `x` and `y` are two random values and respectively identify the `Camera` and the `Block` of the camera visual where the sensors detect the movements.
 The JavaScript code is the following:
+
 ```javascript
 var mqtt = require("mqtt"),
   url = require("url");
@@ -56,24 +59,23 @@ exports.handler = function (context, event) {
   var client = mqtt.connect(url, options);
 
   client.on("connect", function () {
-    let coordinates = {
+    let data = {
       motionBlock: Math.floor(Math.random() * 10),
       cameraID: Math.floor(Math.random() * 5),
     };
-    client.publish(
-      process.env.MQTT_QUEUE,
-      JSON.stringify(coordinates),
-      function () {
-        client.end();
-        context.callback("MQTT Message Sent");
-      }
-    );
+    client.publish(process.env.MQTT_QUEUE, JSON.stringify(data), function () {
+      client.end();
+      context.callback("MQTT Message Sent");
+    });
   });
 };
 ```
+
 The function is deployed using the Docker compose specifics for Nuclio: using a `.yaml` file that defines all functions configurations and the source code.
-- The source code (the JavaScript code) is encoded in base64 and copied in the attribute `functionSourceCode` of the `.yaml` file. 
-- The Javascript dependencies (libraries) install commands are defined in the `commands` attribute of the `.yaml` file. 
+
+- The source code (the JavaScript code) is encoded in base64 and copied in the attribute `functionSourceCode` of the `.yaml` file.
+- The Javascript dependencies (libraries) install commands are defined in the `commands` attribute of the `.yaml` file.
+
 ```yaml
 metadata:
   name: sender
@@ -99,16 +101,19 @@ spec:
     dependencies: []
     runtimeAttributes:
       repositories: []
-    functionSourceCode: dmFyIG1xdHQgPSByZXF1aXJlKCJtcXR0IiksDQogIHVybCA9IHJlcXVpcmUoInVybCIpOw0KDQp2YXIgbXF0dF91cmwgPSB1cmwucGFyc2UocHJvY2Vzcy5lbnYuTVFUVF9VUkwpOw0KdmFyIGF1dGggPSAobXF0dF91cmwuYXV0aCB8fCAiOiIpLnNwbGl0KCI6Iik7DQp2YXIgdXJsID0gIm1xdHQ6Ly8iICsgbXF0dF91cmwuaG9zdDsNCg0KdmFyIG9wdGlvbnMgPSB7DQogIHBvcnQ6IG1xdHRfdXJsLnBvcnQsDQogIGNsaWVudElkOiAic2VuZGVyXyIgKyBNYXRoLnJhbmRvbSgpLnRvU3RyaW5nKDE2KS5zdWJzdHIoMiwgOCksDQogIHVzZXJuYW1lOiBhdXRoWzBdLA0KICBwYXNzd29yZDogYXV0aFsxXSwNCn07DQoNCmV4cG9ydHMuaGFuZGxlciA9IGZ1bmN0aW9uIChjb250ZXh0LCBldmVudCkgew0KICB2YXIgY2xpZW50ID0gbXF0dC5jb25uZWN0KHVybCwgb3B0aW9ucyk7DQoNCiAgY2xpZW50Lm9uKCJjb25uZWN0IiwgZnVuY3Rpb24gKCkgew0KICAgIGxldCBjb29yZGluYXRlcyA9IHsNCiAgICAgIG1vdGlvbkJsb2NrOiBNYXRoLmZsb29yKE1hdGgucmFuZG9tKCkgKiAxMCksDQogICAgICBjYW1lcmFJRDogTWF0aC5mbG9vcihNYXRoLnJhbmRvbSgpICogNSksDQogICAgfTsNCiAgICBjbGllbnQucHVibGlzaChwcm9jZXNzLmVudi5NUVRUX1FVRVVFLCBKU09OLnN0cmluZ2lmeShjb29yZGluYXRlcyksIGZ1bmN0aW9uICgpIHsNCiAgICAgIGNsaWVudC5lbmQoKTsNCiAgICAgIGNvbnRleHQuY2FsbGJhY2soIk1RVFQgTWVzc2FnZSBTZW50Iik7DQogICAgfSk7DQogIH0pOw0KfTsNCg0K
+    functionSourceCode: dmFyIG1xdHQgPSByZXF1aXJlKCJtcXR0IiksDQogIHVybCA9IHJlcXVpcmUoInVybCIpOw0KDQp2YXIgbXF0dF91cmwgPSB1cmwucGFyc2UocHJvY2Vzcy5lbnYuTVFUVF9VUkwpOw0KdmFyIGF1dGggPSAobXF0dF91cmwuYXV0aCB8fCAiOiIpLnNwbGl0KCI6Iik7DQp2YXIgdXJsID0gIm1xdHQ6Ly8iICsgbXF0dF91cmwuaG9zdDsNCg0KdmFyIG9wdGlvbnMgPSB7DQogIHBvcnQ6IG1xdHRfdXJsLnBvcnQsDQogIGNsaWVudElkOiAic2VuZGVyXyIgKyBNYXRoLnJhbmRvbSgpLnRvU3RyaW5nKDE2KS5zdWJzdHIoMiwgOCksDQogIHVzZXJuYW1lOiBhdXRoWzBdLA0KICBwYXNzd29yZDogYXV0aFsxXSwNCn07DQoNCmV4cG9ydHMuaGFuZGxlciA9IGZ1bmN0aW9uIChjb250ZXh0LCBldmVudCkgew0KICB2YXIgY2xpZW50ID0gbXF0dC5jb25uZWN0KHVybCwgb3B0aW9ucyk7DQoNCiAgY2xpZW50Lm9uKCJjb25uZWN0IiwgZnVuY3Rpb24gKCkgew0KICAgIGxldCBkYXRhID0gew0KICAgICAgbW90aW9uQmxvY2s6IE1hdGguZmxvb3IoTWF0aC5yYW5kb20oKSAqIDEwKSwNCiAgICAgIGNhbWVyYUlEOiBNYXRoLmZsb29yKE1hdGgucmFuZG9tKCkgKiA1KSwNCiAgICB9Ow0KICAgIGNsaWVudC5wdWJsaXNoKHByb2Nlc3MuZW52Lk1RVFRfUVVFVUUsIEpTT04uc3RyaW5naWZ5KGRhdGEpLCBmdW5jdGlvbiAoKSB7DQogICAgICBjbGllbnQuZW5kKCk7DQogICAgICBjb250ZXh0LmNhbGxiYWNrKCJNUVRUIE1lc3NhZ2UgU2VudCIpOw0KICAgIH0pOw0KICB9KTsNCn07DQo=
     commands:
-      - 'npm install mqtt'
-      - 'npm install url'
+      - "npm install mqtt"
+      - "npm install url"
     codeEntryType: sourceCode
   platform: {}
   readinessTimeoutSeconds: 10
 ```
+
 #### Consume Function
+
 The Consume Function is written in JavaScript and uses the `amqplib` JavaScript library in order to send a new alert message on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value; the invocation of the function is triggered by a new MQTT message on the topic specified from the `MQTT_QUEUE = iot/sensors/cam` env variable value. The JavaScript code is the following:
+
 ```javascript
 var amqp = require("amqplib");
 
@@ -149,10 +154,13 @@ exports.handler = function (context, event) {
   send_feedback(_data);
 };
 ```
+
 The function is deployed using the Docker compose specifics for Nuclio: using a `.yaml` file that defines all functions configurations and the source code.
-- The source code (the JavaScript code) is encoded in base64 and copied in the attribute `functionSourceCode` of the `.yaml` file. 
+
+- The source code (the JavaScript code) is encoded in base64 and copied in the attribute `functionSourceCode` of the `.yaml` file.
 - The trigger on the MQTT topic is defined under the `triggers` attribute of the `.yaml` file; it allows to auto-invoke the function on a new message receiving from the topic.
-- The Javascript dependencies (libraries) install commands are defined in the `commands` attribute of the `.yaml` file. 
+- The Javascript dependencies (libraries) install commands are defined in the `commands` attribute of the `.yaml` file.
+
 ```yaml
 metadata:
   name: consumer
@@ -195,16 +203,19 @@ spec:
   readinessTimeoutSeconds: 10
   timeoutSeconds: 10
 ```
+
 ### Server Application
+
 The server application is written in JavaScript and uses the `amqplib, mongodb, and nodemailer` JavaScript libraries in order to receive alert messages on the queue specified from the `AMQP_QUEUE = iot/logs` env variable value, store the alerts, and send an email in case of a detected emergency.
 
-The server processes and stores the logs into the MongoDB database (by using the `insertAlert` utility function) and, if an emergency is detected, send an email to the `SENDER_EMAIL_ADDRESS`. 
+The server processes and stores the logs into the MongoDB database (by using the `insertAlert` utility function) and, if an emergency is detected, send an email to the `SENDER_EMAIL_ADDRESS`.
 
-The alarm detection of a camera depends on the `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` number of detections received from a camera in the last `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` seconds. 
+The alarm detection of a camera depends on the `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` number of detections received from a camera in the last `MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS` seconds.
 
 The sending of an email (by using the `sendEmail` utility function) depends on the emergency situation detected (by using the `isAnEmergency` utility function) but, if an email is sent, the server waits `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` seconds before sending a new email in case of a persistent emergency.
 
 The JavaScript code - by hiding the utility functions - is the following:
+
 ```javascript
 require("dotenv-expand")(require("dotenv").config());
 var amqp = require("amqplib");
@@ -253,10 +264,13 @@ amqp
   })
   .catch(console.warn);
 ```
+
 #### insertAlert function
+
 This function uses the `mongodb` JavaScript library for storing an alert identified by the `json` variable and returns the mongodb `document` returned from the `insertOne` method; the alert is stored into the `CamAlert` database and `alerts` collection.
 
 The JavaScript code is the following:
+
 ```javascript
 async function insertAlert(json) {
   const client = new MongoClient(mongoUrl, mongoOptions);
@@ -277,10 +291,13 @@ async function insertAlert(json) {
   }
 }
 ```
+
 #### sendEmail function
+
 This function uses the `mongodb` JavaScript library for storing the sent emails (into the CamAlert database and alerts collection), and uses the `nodemailer` JavaScript library for sending the emails to the `SENDER_EMAIL_ADDRESS`.
 
 The JavaScript code is the following:
+
 ```javascript
 async function sendEmail(json) {
   const client = new MongoClient(mongoUrl, mongoOptions);
@@ -316,9 +333,11 @@ async function sendEmail(json) {
 ```
 
 #### isAnEmergency function
+
 This function uses the `mongodb` JavaScript library for retrieving the alerts (stored into the `CamAlert` database and `alerts` collection) identified by the `json` variable, and returns `true` if the `numberOfAlerts` is greater than `MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS` and the `numberOfEmailsSent` in the last `EMAIL_SENDING_TIME_WINDOW_IN_SECONDS` seconds is zero, `false` otherwise.
 
 The JavaScript code is the following:
+
 ```javascript
 async function isAnEmergency(json) {
   const client = new MongoClient(mongoUrl, mongoOptions);
@@ -408,10 +427,11 @@ async function isAnEmergency(json) {
 ## Installation
 
 ### Prerequisites
-  - Docker and Docker Compose (Application containers engine). Install it from here https://www.docker.com
-  - Nuclio (Serverless computing provider)
-  - RabbitMQ (AMQP and MQTT message broker)
-  - Node.js (if you prefer to execute the Server application without using Docker). Install it from here https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+
+- Docker and Docker Compose (Application containers engine). Install it from here https://www.docker.com
+- Nuclio (Serverless computing provider)
+- RabbitMQ (AMQP and MQTT message broker)
+- Node.js (if you prefer to execute the Server application without using Docker). Install it from here https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
 
 ### Repository
 
@@ -448,34 +468,35 @@ Edit these environment variables by following these instructions:
 ### Build
 
 If you prefer to execute the `server application` without using Docker, you need to remove the server service from the docker-compose.yml file:
+
 ```yml
-  server:
-    build:
-      context: ./Server
-      dockerfile: Dockerfile.dev
-      args:
-        - version=${NODE_VERSION}
-    volumes:
-      - "./Server/code/server.js:/usr/app/server.js"
-    environment:
-      - AMQP_URL=${AMQP_URL}
-      - AMQP_QUEUE=${AMQP_QUEUE}
-      - DATABASE_URL=${DATABASE_URL}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_SECURE=${SMTP_SECURE}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - RECIPIENT_EMAIL_ADDRESS=${RECIPIENT_EMAIL_ADDRESS}
-      - SENDER_EMAIL_ADDRESS=${SENDER_EMAIL_ADDRESS}
-      - MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS=${MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS}
-      - MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS=${MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS}
-      - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS=${EMAIL_SENDING_TIME_WINDOW_IN_SECONDS}
-    depends_on:
-      - "rabbitmq"
-      - "nuclio"
-      - "database"
-    restart: always
+server:
+  build:
+    context: ./Server
+    dockerfile: Dockerfile.dev
+    args:
+      - version=${NODE_VERSION}
+  volumes:
+    - "./Server/code/server.js:/usr/app/server.js"
+  environment:
+    - AMQP_URL=${AMQP_URL}
+    - AMQP_QUEUE=${AMQP_QUEUE}
+    - DATABASE_URL=${DATABASE_URL}
+    - SMTP_HOST=${SMTP_HOST}
+    - SMTP_PORT=${SMTP_PORT}
+    - SMTP_SECURE=${SMTP_SECURE}
+    - SMTP_USER=${SMTP_USER}
+    - SMTP_PASS=${SMTP_PASS}
+    - RECIPIENT_EMAIL_ADDRESS=${RECIPIENT_EMAIL_ADDRESS}
+    - SENDER_EMAIL_ADDRESS=${SENDER_EMAIL_ADDRESS}
+    - MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS=${MOVEMENT_DETECTION_TIME_WINDOW_IN_SECONDS}
+    - MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS=${MINIMUM_NUMBER_OF_MOVEMENT_DETECTIONS}
+    - EMAIL_SENDING_TIME_WINDOW_IN_SECONDS=${EMAIL_SENDING_TIME_WINDOW_IN_SECONDS}
+  depends_on:
+    - "rabbitmq"
+    - "nuclio"
+    - "database"
+  restart: always
 ```
 
 Build the local environment with Docker:
@@ -498,19 +519,27 @@ Visit the Nuclio Dashboard by typing `http://COMPUTER_IP:NUCLIO_DASHBOARD_PORT` 
 - Create and deploy the Sender function into the `CamAlert` project by using the YAML file stored in the `Nuclio/functions/sender.yaml` path.
 
 If you prefer to execute the `server application` without using Docker, you need to:
+
 - copy `.env` file into the server code folder:
+
 ```sh
 cp .env Server/code/.env
 ```
+
 - move into the server code folder:
+
 ```sh
 cd Server/code
 ```
+
 - install the dependencies:
+
 ```sh
 npm install amqplib dotenv dotenv-expand mongodb nodemailer
 ```
+
 - execute the server:
+
 ```sh
 node server.js
 ```
